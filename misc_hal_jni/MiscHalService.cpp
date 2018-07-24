@@ -5,9 +5,11 @@
 #include <jni.h>
 #include <misc_hal.h>
 
+#define LOG_NDEBUG 0
+
 struct misc_control_device_t *misc_hal_device = NULL;
 
-static jboolean GetBootConfig(JNIEnv* env, jobject thiz){
+static jlong GetBootConfig(JNIEnv* env, jobject thiz){
     ALOGI("Misc HAL JNI: GetBootConfig() is invoked.");
     if (misc_hal_device == NULL)	{
         ALOGI("Misc HAL JNI: led_hal_device was not fetched correctly.");
@@ -156,18 +158,25 @@ static jboolean SysSetBootConfigCamera(JNIEnv *env, jobject clazz, jlong data)
 
 #endif
 
+static jboolean BootConfigRelease(JNIEnv *env, jclass clazz)
+{
+	ALOGE("BootConfigRelease Release success.");
+	return 0;
+}
+
 static const JNINativeMethod methods[] =
 {
-    { "_init",          "()Z",  (void *) BootConfigInit },
-    { "_getBootConfig", "()J",  (void *) GetBootConfig },
-    { "_setBootConfig", "(J)Z", (void *) SetBootConfig },
-    { "_setBootLights", "(J)Z", (void *) SetBootLights },
-    { "_setBootCamera", "(J)Z", (void *) SetBootCamera },
+    { "nativeInit",			"()Z",  (void *) BootConfigInit },
+    { "nativeGetEmmcData",	"()J",  (void *) GetBootConfig },
+    { "nativeSetEmmcData",	"(J)Z", (void *) SetBootConfig },
+//  { "_setBootLights", "(J)Z", (void *) SetBootLights },
+//  { "_setBootCamera", "(J)Z", (void *) SetBootCamera },
+    { "nativeUnInit",		"()Z",  (void *) BootConfigRelease },
 };
 
 int register_misc_hal_jni(JNIEnv* env)
 {
-	static const char* const kClassName = "main/java/com/roadrover/misc/hal/service/MiscHalService";
+	static const char* const kClassName = "com/roadrover/services/jni/EMMC";
 
 	jclass clazz;
 
@@ -183,6 +192,7 @@ int register_misc_hal_jni(JNIEnv* env)
 		ALOGE("Failed registering methods for %s\n", kClassName);
 		return -1;
 	}
+	ALOGE("register hal jni OK!\n");
 
 	return 0;
 }
