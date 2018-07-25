@@ -6,6 +6,7 @@
 #include <misc_hal.h>
 
 #define LOG_NDEBUG 0
+#define LOG_TAG "MISC"
 
 struct misc_control_device_t *misc_hal_device = NULL;
 

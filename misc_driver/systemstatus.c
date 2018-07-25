@@ -60,16 +60,16 @@ static struct timer_list SystemStartupTimer;
 #include <linux/types.h>
 #include <linux/cdev.h>
 
-#define IOCTL_ANDROID_GET_BOOTCONFIG    0x80000001
-#define IOCTL_ANDROID_SET_BOOTCONFIG    0x80000002
+#define IOCTL_ANDROID_GET_BOOTCONFIG    0x8000001
+#define IOCTL_ANDROID_SET_BOOTCONFIG    0x8000002
 
-#define IOCTL_ANDROID_SET_BOOT_LIGHTS   0x80000003
-#define IOCTL_ANDROID_SET_BOOT_CAMERA   0x80000004
+#define IOCTL_ANDROID_SET_BOOT_LIGHTS   0x8000003
+#define IOCTL_ANDROID_SET_BOOT_CAMERA   0x8000004
 
 static DEFINE_MUTEX(nvram_mutex);
 
 
-unsigned char SystemBrightness = -1;
+//unsigned char SystemBrightness = -1;
 unsigned char GetSystemBlFlag = 0;
 
 #define READ_FROM_CPU_REGISTER 0
@@ -166,8 +166,8 @@ bl_write (struct file *file, const char __user *buf, size_t ret, loff_t *ppos)
 static unsigned int get_boot_config(void)
 {
     struct file *fd;
-//    size_t ret;
-    int ret;
+    size_t ret;
+//  int ret;
     unsigned char buff[10];
 	unsigned int value;
 
@@ -178,14 +178,22 @@ static unsigned int get_boot_config(void)
     old_fs = get_fs();
     set_fs(KERNEL_DS);
     fd = filp_open("/dev/block/mmcblk3", O_RDONLY, 0);
-    off = 0x7FFE00;
+	if (IS_ERR(fd)) {
+		printk(KERN_ERR "%s open fail!\n", __func__);
+		goto CLOSE_FILP;
+	}
+#ifdef OLD_CHANGE
+		off = 0xC00000; 
+#else
+		off = 0x7FFE00; // 6MB - 0x600
+#endif
 
-    ret = vfs_read(fd,buff, sizeof(buff), &off);
+    ret = vfs_read(fd, buff, sizeof(buff), &off);
 	if (IS_ERR(ret)) {
 		printk(KERN_ERR "%s vfs_read fail!\n", __func__);
 		goto CLOSE_FILP;
 	}
-
+ 
     ret = vfs_fsync(fd, 0);
 	if (IS_ERR(ret)) {
 		printk(KERN_ERR "%s vfs_fsync fail!\n", __func__);
@@ -198,25 +206,25 @@ static unsigned int get_boot_config(void)
 //		SystemBrightness = (char)(buff[2]- '0')*1000 + (char)(buff[3] - '0')*100 + (char)(buff[4] - '0');
 //        sscanf();
 
-		printk("vfs_read BL%d %x %x %x %x %x..\n", SystemBrightness, buff[2], buff[3], buff[4]);
+//		printk("vfs_read BL%d %x %x %x %x %x..\n", SystemBrightness, buff[2], buff[3], buff[4]);
 	}
 
 //	printk("vfs_read %s %s %s %s %s %s %s %s..\n",buff[2],buff[3],buff[4],buff[5],buff[6],buff[7],buff[8],buff[9]);
-    printk(KERN_ERR "vfs_read %s\n", buff+2);
-
+    printk(KERN_ERR "vfs_read 0x%s\n", buff+2);
+ 
 CLOSE_FILP:
 	filp_close(fd, NULL);
 
 //	return SystemBrightness;
 	sscanf(buff+2, "%x", &value);
 	printk(KERN_ERR "value = %d\n", value);
-    return value;
+    return value; 
 }
 
 static int set_boot_config(unsigned char *buf,unsigned char len)
 {
     struct file *fd;
-    int ret;
+    size_t ret;
     unsigned char buff[513];
 
     loff_t off;
@@ -231,11 +239,11 @@ static int set_boot_config(unsigned char *buf,unsigned char len)
 		goto CLOSE_FILP;
 	}
 #ifdef OLD_CHANGE
-    off = 0x3ffa00;	// 4MB - 0x600
+    off = 0xC00000; 
 #else
 	off = 0x7FFE00;	// 6MB - 0x600
 #endif
-
+ 
     buff[0]=0xaa;
     buff[1]=0x11;
 	memcpy(buff+2, buf, len);
@@ -252,11 +260,10 @@ static int set_boot_config(unsigned char *buf,unsigned char len)
 	}
 
 //	printk(KERN_ERR "vfs_write %s %s %s %s %s %s %s %s ..\n",buff[2],buff[3],buff[4],buff[5],buff[6],buff[7],buff[8],buff[9]);
-	printk(KERN_ERR "vfs_write %s \n", &buff[2]);
+	printk(KERN_ERR "vfs_write 0x%s \n", &buff[2]);
 
 CLOSE_FILP:
-	filp_close(fd, NULL);
-
+	filp_close(fd, NULL); 
 	return 0;
 }
 
@@ -387,45 +394,17 @@ bl_read(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos)
 	copy_to_user(buf, tmp, 1);
 #else
 
-	struct file *fd;
-    size_t ret;
-    unsigned char buff[1024];
+	long value;
+	char mBuffer[8];
 
-    loff_t off;
+	value = get_boot_config();
+	sprintf(mBuffer, "%d", value);
 
-    mm_segment_t old_fs;
+    printk(KERN_ERR "bl_read %d\n", value);
+	copy_to_user(buf, mBuffer, sizeof(mBuffer));
 
-    old_fs = get_fs();
-    set_fs(KERNEL_DS);
-    fd = filp_open("/dev/block/mmcblk3", O_RDONLY, 0);
-    off = 0x7FFE00;
-
-    ret = vfs_read(fd,buff, 2+4, &off);
-	if (IS_ERR(ret)) {
-		printk(KERN_ERR "%s vfs_read fail!\n", __func__);
-		goto CLOSE_FILP;
-	}
-
-    ret = vfs_fsync(fd, 0);
-	if (IS_ERR(ret)) {
-		printk(KERN_ERR "%s vfs_fsync fail!\n", __func__);
-		goto CLOSE_FILP;
-	}
-
-//    get_boot_config();
-    unsigned char *mbuff;
-//    get_boot_config();
-    printk("vfs_read %x %x %x %x %x..\n",buff[2], buff[3], buff[4], buff[5]);
-
-    int i = 0;
-    printk("vfs_read :");
-    for (i; i<6; i++)
-        printk("%x ",buff[i]);
-    printk("\n");
-    copy_to_user(buf, (void *)buff, 6);
 
 #endif
-CLOSE_FILP:
 
 	return nbytes;	
 }
@@ -433,62 +412,20 @@ CLOSE_FILP:
 static ssize_t
 bl_write (struct file *file, const char __user *buf, size_t count, loff_t *ppos)
 {
-	char mBuffer[10];
+	char mBuffer[8];
+	unsigned int value;
 
-	memset(mBuffer, 0, sizeof(mBuffer));
+	memset(mBuffer,0, sizeof(mBuffer));
 	copy_from_user(mBuffer, buf, count);
-    mBuffer[count] = '\0';
+
+	/* switch Dec to Char*/
+	sprintf(mBuffer, "%x", value);
+	printk(KERN_ERR "bl_write %s count = %d\n", mBuffer, count);
 	printk(KERN_ERR "%d %s: buf = %s\n", __LINE__, __func__, buf);
-	//	__get_user(mBuffer, (char *)arg);
-#ifdef OLD_CHANGE
-	if(memcmp(mBuffer,"BL", 2) == 0)
-		set_backlight_config(mBuffer + 2, 3);
-#else
 
-    struct file *fd;
-    int ret;
-//    unsigned char buff[513];
+    set_boot_config(mBuffer, sizeof(mBuffer));
 
-    loff_t off;
-
-    mm_segment_t old_fs;
-
-    old_fs = get_fs();
-    set_fs(KERNEL_DS);
-    fd = filp_open("/dev/block/mmcblk3", O_RDWR, 0);
-	if (IS_ERR(fd)) {
-		printk(KERN_ERR "%s open fail!\n", __func__);
-		goto CLOSE_FILP;
-	}
-#ifdef OLD_CHANGE
-    off = 0x3ffa00;	// 4MB - 0x600
-#else
-	off = 0x7FFE00;	// 6MB - 0x600
-#endif
-
-    mBuffer[0]=0xaa;
-    mBuffer[1]=0x11;
-	memcpy(mBuffer+2, mBuffer, count);
-    ret = vfs_write(fd, mBuffer, 2+count, &off);
-	if (IS_ERR(ret)) {
-		printk(KERN_ERR "%s vfs_write fail!\n", __func__);
-		goto CLOSE_FILP;
-	}
-
-    ret = vfs_fsync(fd, 0);
-	if (IS_ERR(ret)) {
-		printk(KERN_ERR "%s vfs_fsync fail!\n", __func__);
-		goto CLOSE_FILP;
-	}
-
-    printk(KERN_ERR "vfs_write %x %x %x %x %x %x ..\n",mBuffer[0],mBuffer[1],mBuffer[2], mBuffer[3],mBuffer[4],mBuffer[5]);
-
-CLOSE_FILP:
-	filp_close(fd, NULL);
-
-//	set_boot_config(mBuffer, sizeof(mBuffer));
-    return 0;
-#endif
+    return count;
 }
 
 static long bl_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
